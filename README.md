@@ -1,36 +1,28 @@
-# ⚡ Hardcore Python CLI Calculator
+# ⚡ Kesha 3000 — The Sentient Sassy Calculator
 
-A secure, robust mathematical expression evaluator and interactive CLI REPL powered by Python's Abstract Syntax Tree (`ast`).
-
----
-
-## ✨ Features
-
-- **Safe Evaluation:** Zero unsafe `eval()` calls. All expressions are validated and traversed safely using the AST visitor pattern.
-- **Variable Support:** Define and reuse variables on the fly (e.g., `radius = 10`, `area = pi * radius^2`).
-- **Rich Math Library:** 
-  - **Trigonometry:** `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `deg`, `rad`
-  - **Algebra:** `sqrt`, `cbrt`, `log`, `ln`, `exp`, `abs`, `round`
-  - **Combinatorics:** `fact` (factorial)
-- **Built-in Constants:** `pi`, `e`, `phi` (golden ratio), and `tau`.
-- **Session Memory:** The latest result is automatically stored in `ans` for chained calculations.
-- **Interactive REPL Commands:**
-  - `vars` — Display current environment variables and constants.
-  - `history` — View recent calculations.
-  - `clear` — Clear the terminal screen.
-  - `help` — Show usage instructions.
-  - `exit` / `quit` — Close the application.
-- **Zero Dependencies:** Runs entirely on the Python Standard Library.
+An interactive, Tamagotchi-style desktop calculator with simulated human flaws, RPG progression, existential crises, and an attitude problem.
 
 ---
 
-## 🚀 Quick Start
+## 🎮 Features
 
-### Prerequisites
-- Python 3.8 or higher.
+- **Human-Like Flaws:** Makes mistakes based on IQ level (off-by-one errors, pixel dyslexia, dropped remainders, and inflation adjustments).
+- **RPG Progression:**
+  - 🧠 **IQ:** Increases when you teach him the correct math. Decreases when you fall for his bluffs.
+  - ⚡ **Energy:** Drains with every calculation. Feed him coffee to keep him awake!
+  - 👑 **Ego:** High ego causes him to reject elementary math ("1+1 is beneath me").
+  - 🔥 **Streak:** Rewards your attention span.
+- **Interactive Tools:**
+  - `☕ Coffee` — Restore energy.
+  - `⚡ Boost` — Overclock his clock speed into an overdrive state.
+  - `💬 Rant` — Listen to existential musings about being written in pure Python.
+- **Dozens of Easter Eggs:** Try typing `1000-7`, `42`, `69`, `420`, `80085`, `1337`, `404`, `21`, or `777`.
+- **Cross-Platform Auto-Builds:** Packaged automatically via GitHub Actions into `.exe` (Windows) and `.tar.gz` (Linux).
 
-### Run
-Clone the repository and run the script directly:
+---
+
+## 🚀 Running Locally
 
 ```bash
-python calculator.py
+pip install customtkinter
+python3 gui_calculator.py
