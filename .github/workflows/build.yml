@@ -1,0 +1,58 @@
+name: Build and Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            asset_path: dist/HardcoreCalculator-Windows.exe
+
+          - os: ubuntu-latest
+            asset_path: dist/HardcoreCalculator-Linux.tar.gz
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install customtkinter pyinstaller
+
+      # Сборка для Windows
+      - name: Build Windows Executable
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconsole --onefile --name "HardcoreCalculator-Windows" gui_calculator.py
+
+      # Сборка для Linux
+      - name: Build Linux Executable
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y python3-tk
+          pyinstaller --noconsole --onefile --name "HardcoreCalculator-Linux" gui_calculator.py
+          chmod +x dist/HardcoreCalculator-Linux
+          tar -czvf dist/HardcoreCalculator-Linux.tar.gz -C dist HardcoreCalculator-Linux
+
+      # Прикрепление файлов к релизу
+      - name: Upload Binaries to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
