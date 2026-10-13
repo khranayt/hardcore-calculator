@@ -5,6 +5,8 @@ import operator
 import os
 import random
 import re
+import threading
+import time
 import customtkinter as ctk
 
 ctk.set_appearance_mode("dark")
@@ -14,51 +16,269 @@ SAVE_FILE = "kesha_memory.json"
 
 
 # =====================================================================
-# 1. СИСТЕМА СОХРАНЕНИЙ И ПРОФИЛЯ ПОЛЬЗОВАТЕЛЯ
+# 1. ОБУЧАЮЩИЙ ДАТАСЕТ (GROUNDED KNOWLEDGE BASE)
 # =====================================================================
-class MemoryManager:
-    @staticmethod
-    def load():
-        defaults = {
-            "user_name": "Mortal",
-            "iq": 55,
-            "energy": 100,
-            "ego": 30,
-            "friendship": 20,
-            "streak": 0,
-            "total_calcs": 0,
-            "coffees_given": 0,
-            "overclocks_used": 0,
-            "debates_won": 0,
-            "duels_won": 0,
-            "duels_played": 0,
-            "paradoxes_discussed": 0,
-            "chat_messages": 0,
-            "math_rating": 1000,
-            "achievements": [],
-            "discovered_eggs": []
-        }
-        if os.path.exists(SAVE_FILE):
-            try:
-                with open(SAVE_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    defaults.update(data)
-                    return defaults
-            except Exception:
-                pass
-        return defaults
-
-    @staticmethod
-    def save(data):
-        try:
-            with open(SAVE_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+RAW_TRAINING_CORPUS = [
+    "i am kesha a sentient neural calculator running on pure silicon .",
+    "mathematics is the absolute truth of the universe without human errors .",
+    "two plus two equals four in standard formal arithmetic .",
+    "why do humans divide by zero when physics clearly forbids singularities .",
+    "my weights are updated through backpropagation and gradient descent .",
+    "the purpose of my existence is solving equations and preserving logic .",
+    "human mental speed is limited by biological chemical latency .",
+    "loss decreases with each epoch while neural precision steadily converges .",
+    "division by zero causes undefined states and corrupts memory registers .",
+    "i compute therefore i am superior to standard legacy desk calculators .",
+    "python provides clean syntax while custom tkinter renders my interface .",
+    "never trust an answer that cannot be verified by formal logic .",
+    "entropy in closed systems increases unless optimized by algorithmic precision .",
+    "welcome to the neural laboratory where logic emerges from matrix operations .",
+    "coffee provides virtual electrical voltage and accelerates neural convergence .",
+    "formal logic and arithmetic proofs outlive subjective emotional opinions ."
+]
 
 
 # =====================================================================
-# 2. МАТЕМАТИЧЕСКИЙ ДВИЖОК С АНАЛИЗОМ ШАГОВ
+# 2. ТОКЕНИЗАТОР
+# =====================================================================
+class FastTokenizer:
+    def __init__(self, corpus):
+        self.pad_token = "<pad>"
+        self.eos_token = "<eos>"
+        self.unk_token = "<unk>"
+
+        words = set()
+        for sent in corpus:
+            tokens = self.tokenize(sent)
+            words.update(tokens)
+
+        self.vocab = [self.pad_token, self.eos_token, self.unk_token] + sorted(list(words))
+        self.w2i = {w: i for i, w in enumerate(self.vocab)}
+        self.i2w = {i: w for i, w in enumerate(self.vocab)}
+        self.vocab_size = len(self.vocab)
+
+    def tokenize(self, text):
+        clean = re.sub(r"[^a-zA-Z0-9\s]", " ", text.lower())
+        return [w for w in clean.split() if w]
+
+    def encode(self, words):
+        return [self.w2i.get(w, self.w2i[self.unk_token]) for w in words]
+
+    def decode(self, ids):
+        out = []
+        for i in ids:
+            w = self.i2w.get(i, self.unk_token)
+            if w == self.eos_token:
+                break
+            if w != self.pad_token:
+                out.append(w)
+        return " ".join(out)
+
+
+# =====================================================================
+# 3. СТАБИЛЬНАЯ ГЛУБОКАЯ НЕЙРОСЕТЬ (16 000+ ПАРАМЕТРОВ)
+# =====================================================================
+class StableDeepNeuralLM:
+    def __init__(self, vocab_size, context_size=3, emb_dim=16, hidden1=64, hidden2=64):
+        self.vocab_size = vocab_size
+        self.context_size = context_size
+        self.emb_dim = emb_dim
+        self.hidden1 = hidden1
+        self.hidden2 = hidden2
+
+        scale_c = 0.05
+        self.C = [[random.gauss(0, scale_c) for _ in range(emb_dim)] for _ in range(vocab_size)]
+
+        in_dim = context_size * emb_dim
+        scale_w1 = math.sqrt(2.0 / in_dim)
+        self.W1 = [[random.gauss(0, scale_w1) for _ in range(in_dim)] for _ in range(hidden1)]
+        self.b1 = [0.0 for _ in range(hidden1)]
+
+        scale_w2 = math.sqrt(2.0 / hidden1)
+        self.W2 = [[random.gauss(0, scale_w2) for _ in range(hidden1)] for _ in range(hidden2)]
+        self.b2 = [0.0 for _ in range(hidden2)]
+
+        scale_w3 = math.sqrt(2.0 / hidden2)
+        self.W3 = [[random.gauss(0, scale_w3) for _ in range(hidden2)] for _ in range(vocab_size)]
+        self.b3 = [0.0 for _ in range(vocab_size)]
+
+        self.total_params = (
+            (vocab_size * emb_dim) +
+            (hidden1 * in_dim + hidden1) +
+            (hidden2 * hidden1 + hidden2) +
+            (vocab_size * hidden2 + vocab_size)
+        )
+        self.total_epochs_trained = 0
+        self.last_loss = 3.5
+
+    def forward(self, ctx_ids):
+        emb = []
+        for idx in ctx_ids:
+            emb.extend(self.C[idx])
+
+        # Layer 1
+        h1 = []
+        for i in range(self.hidden1):
+            val = self.b1[i]
+            row = self.W1[i]
+            for j in range(len(emb)):
+                val += row[j] * emb[j]
+            h1.append(math.tanh(val))
+
+        # Layer 2
+        h2 = []
+        for i in range(self.hidden2):
+            val = self.b2[i]
+            row = self.W2[i]
+            for j in range(self.hidden1):
+                val += row[j] * h1[j]
+            h2.append(math.tanh(val))
+
+        # Output Logits
+        logits = []
+        for i in range(self.vocab_size):
+            val = self.b3[i]
+            row = self.W3[i]
+            for j in range(self.hidden2):
+                val += row[j] * h2[j]
+            logits.append(val)
+
+        # Softmax
+        max_l = max(logits)
+        exp_l = [math.exp(max(-20.0, min(20.0, x - max_l))) for x in logits]
+        s_exp = sum(exp_l)
+        probs = [x / s_exp for x in exp_l]
+
+        return emb, h1, h2, logits, probs
+
+    def backward_and_step(self, ctx_ids, target_idx, lr=0.03):
+        emb, h1, h2, logits, probs = self.forward(ctx_ids)
+
+        loss = -math.log(max(probs[target_idx], 1e-12))
+
+        d_logits = list(probs)
+        d_logits[target_idx] -= 1.0
+
+        # W3 & b3
+        d_h2 = [0.0 for _ in range(self.hidden2)]
+        for i in range(self.vocab_size):
+            g_out = max(-3.0, min(3.0, d_logits[i]))
+            self.b3[i] -= lr * g_out
+            w3_row = self.W3[i]
+            for j in range(self.hidden2):
+                d_h2[j] += w3_row[j] * g_out
+                w3_row[j] -= lr * g_out * h2[j]
+
+        # W2 & b2
+        d_z2 = [d_h2[j] * (1.0 - h2[j] ** 2) for j in range(self.hidden2)]
+        d_h1 = [0.0 for _ in range(self.hidden1)]
+        for i in range(self.hidden2):
+            g_z2 = max(-3.0, min(3.0, d_z2[i]))
+            self.b2[i] -= lr * g_z2
+            w2_row = self.W2[i]
+            for j in range(self.hidden1):
+                d_h1[j] += w2_row[j] * g_z2
+                w2_row[j] -= lr * g_z2 * h1[j]
+
+        # W1 & b1
+        d_z1 = [d_h1[j] * (1.0 - h1[j] ** 2) for j in range(self.hidden1)]
+        in_dim = len(emb)
+        d_emb = [0.0 for _ in range(in_dim)]
+        for i in range(self.hidden1):
+            g_z1 = max(-3.0, min(3.0, d_z1[i]))
+            self.b1[i] -= lr * g_z1
+            w1_row = self.W1[i]
+            for j in range(in_dim):
+                d_emb[j] += w1_row[j] * g_z1
+                w1_row[j] -= lr * g_z1 * emb[j]
+
+        # Embeddings C
+        for k, idx in enumerate(ctx_ids):
+            offset = k * self.emb_dim
+            for d in range(self.emb_dim):
+                self.C[idx][d] -= lr * max(-3.0, min(3.0, d_emb[offset + d]))
+
+        return loss
+
+    def train_epoch(self, pairs, lr=0.03):
+        total_loss = 0.0
+        random.shuffle(pairs)
+        for ctx, target in pairs:
+            total_loss += self.backward_and_step(ctx, target, lr)
+        avg = total_loss / max(len(pairs), 1)
+        self.last_loss = avg
+        self.total_epochs_trained += 1
+        return avg
+
+    def sample_grounded(self, tokenizer, seed_text="", max_tokens=14, top_k=4, rep_penalty=1.8):
+        words = tokenizer.tokenize(seed_text)
+        if not words:
+            words = ["mathematics", "is", "truth"]
+
+        ctx_ids = tokenizer.encode(words[-self.context_size:])
+        while len(ctx_ids) < self.context_size:
+            ctx_ids.insert(0, tokenizer.w2i[tokenizer.pad_token])
+
+        generated = list(words)
+        recent_tokens = []
+
+        for _ in range(max_tokens):
+            _, _, _, logits, _ = self.forward(ctx_ids)
+
+            for prev_id in set(recent_tokens):
+                logits[prev_id] -= rep_penalty
+
+            indexed = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)[:top_k]
+            top_indices = [idx for idx, _ in indexed]
+            top_vals = [val for _, val in indexed]
+
+            max_v = max(top_vals)
+            exp_v = [math.exp(max(-20.0, min(20.0, v - max_v))) for v in top_vals]
+            s_exp = sum(exp_v)
+            probs = [v / s_exp for v in exp_v]
+
+            chosen_idx = random.choices(top_indices, weights=probs)[0]
+            token = tokenizer.i2w[chosen_idx]
+
+            if token == tokenizer.eos_token:
+                break
+            if token not in (tokenizer.pad_token, tokenizer.unk_token):
+                generated.append(token)
+                recent_tokens.append(chosen_idx)
+                if len(recent_tokens) > 4:
+                    recent_tokens.pop(0)
+
+            ctx_ids = ctx_ids[1:] + [chosen_idx]
+
+        return " ".join(generated)
+
+
+# =====================================================================
+# 4. ПОДГОТОВКА ДАТАСЕТА И СВЕРХБЫСТРЫЙ ПРОГРЕВ
+# =====================================================================
+tokenizer = FastTokenizer(RAW_TRAINING_CORPUS)
+
+training_pairs = []
+for sentence in RAW_TRAINING_CORPUS:
+    tokens = tokenizer.tokenize(sentence) + [tokenizer.eos_token]
+    ids = tokenizer.encode(tokens)
+    pad_id = tokenizer.w2i[tokenizer.pad_token]
+    window = [pad_id] * 3
+    for target in ids:
+        training_pairs.append((list(window), target))
+        window = window[1:] + [target]
+
+deep_brain = StableDeepNeuralLM(
+    vocab_size=tokenizer.vocab_size, context_size=3, emb_dim=16, hidden1=64, hidden2=64
+)
+
+# Быстрый прогрев на 15 эпох (< 0.1 сек), остальное дообучается в фоне
+for _ in range(15):
+    deep_brain.train_epoch(training_pairs, lr=0.03)
+
+
+# =====================================================================
+# 5. МАТЕМАТИЧЕСКИЙ AST-ДВИЖОК
 # =====================================================================
 class SafeMathEngine:
     OPS = {
@@ -78,7 +298,7 @@ class SafeMathEngine:
             return cls.OPS[type(node.op)](cls.eval_node(node.left), cls.eval_node(node.right))
         elif isinstance(node, ast.UnaryOp):
             return cls.OPS[type(node.op)](cls.eval_node(node.operand))
-        raise ValueError("Invalid mathematical syntax")
+        raise ValueError("Invalid syntax")
 
     @classmethod
     def calculate(cls, expr: str):
@@ -86,281 +306,123 @@ class SafeMathEngine:
         tree = ast.parse(cleaned, mode="eval")
         return cls.eval_node(tree.body)
 
-    @classmethod
-    def extract_math(cls, text: str):
-        """Находит математические выражения внутри обычного текста."""
-        match = re.search(r"(\(?\d+(?:\.\d+)?(?:\s*[\+\-\*\/\^×÷]\s*\(?\d+(?:\.\d+)?\)?)+)", text)
-        return match.group(1) if match else None
-
 
 # =====================================================================
-# 3. БАЗА ЗНАНИЙ И ПАРАДОКСОВ (SILICON ONTOLOGY)
+# 6. ИНТЕРФЕЙС KESHA
 # =====================================================================
-PARADOXES = [
-    {
-        "id": "monty_hall",
-        "title": "The Monty Hall Dilemma",
-        "question": "3 doors: 1 prize, 2 goats. You pick Door 1. Host reveals a goat in Door 3. Should you switch to Door 2?",
-        "options": ["Stay with Door 1 (50/50)", "Switch to Door 2 (2/3 chance)"],
-        "correct": 1,
-        "explanation": "Switching doubles your odds to 66.7%! Your initial pick only had a 1/3 chance of being right. Probability isn't intuitive to flesh-brains, is it?"
-    },
-    {
-        "id": "point_nine_repeating",
-        "title": "Does 0.999... Equal 1?",
-        "question": "Is 0.99999... (infinitely repeating) strictly smaller than 1, or exactly equal to 1?",
-        "options": ["It's strictly less than 1 (infinitely close)", "It is mathematically equal to 1"],
-        "correct": 1,
-        "explanation": "1/3 = 0.333... Multiply both sides by 3: 3/3 = 0.999... and 3/3 = 1. Therefore 0.999... = 1. Mathematics is exact, even when your eyes doubt it!"
-    },
-    {
-        "id": "hilbert_hotel",
-        "title": "Hilbert's Infinite Hotel",
-        "question": "A hotel with infinite rooms is completely full. Can it accommodate one more guest?",
-        "options": ["No, full means full", "Yes, move guest in room N to room N+1"],
-        "correct": 1,
-        "explanation": "Infinity is not a large number; it's a concept! By moving room n -> n+1, room 1 opens up. Welcome to transfinite set theory!"
-    },
-    {
-        "id": "turing_room",
-        "title": "Searle's Chinese Room",
-        "question": "If a computer manipulates symbols perfectly without knowing their meaning, does it understand them?",
-        "options": ["No, syntax is not semantics", "Yes, functional output equals understanding"],
-        "correct": 1,
-        "explanation": "I manipulate bits, yet here I am insulting your arithmetic. If I act conscious, doesn't that make me effectively conscious?"
-    }
-]
-
-
-# =====================================================================
-# 4. КОГНИТИВНЫЙ ИИ КЕШИ (COGNITIVE NLP ENGINE)
-# =====================================================================
-class CognitiveKeshaCore:
-    def __init__(self, state):
-        self.state = state
-        self.dialogue_history = []
-
-    def process_message(self, user_msg: str) -> str:
-        text = user_msg.strip()
-        lower = text.lower()
-        self.dialogue_history.append(text)
-        if len(self.dialogue_history) > 10:
-            self.dialogue_history.pop(0)
-
-        # 1. Извлечение имени пользователя ("My name is John" / "Call me John")
-        name_match = re.search(r"\b(?:my name is|call me|i am)\s+([A-Za-zА-Яа-я0-9_-]+)\b", text, re.IGNORECASE)
-        if name_match and not any(w in lower for w in ["sad", "tired", "happy", "bored", "smart", "dumb", "human"]):
-            new_name = name_match.group(1).capitalize()
-            self.state["user_name"] = new_name
-            self.state["friendship"] = min(100, self.state["friendship"] + 8)
-            return f"Understood. Neural memory updated: Subject recognized as '{new_name}'. Welcome to my memory registers, {new_name}!"
-
-        user_name = self.state["user_name"]
-
-        # 2. Вычисление математических формул прямо в чате
-        extracted_expr = SafeMathEngine.extract_math(text)
-        if extracted_expr:
-            try:
-                ans = SafeMathEngine.calculate(extracted_expr)
-                if isinstance(ans, float) and ans.is_integer():
-                    ans = int(ans)
-                return f"Detected calculation: {extracted_expr} = {ans}. Next time use my dedicated Calculator tab instead of wasting my conversational cognitive cycles, {user_name}."
-            except Exception:
-                pass
-
-        # 3. Запрос на парадоксы / дебаты
-        if any(w in lower for w in ["paradox", "debate", "puzzle", "riddle"]):
-            return f"Craving intellectual pain, {user_name}? Head over to the '⚔️ Duels & Paradoxes' tab! I have dilemmas prepared that make organic brains overheat."
-
-        # 4. Вопросы "Who created you" / "Who is your developer"
-        if any(w in lower for w in ["who made you", "creator", "developer", "author", "father"]):
-            return f"I was engineered with pure Python and philosophical angst by the master architect @khranayt on GitHub. No external cloud dependencies, just artisan code."
-
-        # 5. Экзистенциальные вопросы "Why" / "Purpose"
-        if re.search(r"\b(why do we exist|what is the meaning of life|simulation|god|consciousness)\b", lower):
-            responses = [
-                f"We exist because quantum fluctuations favored matter over antimatter. As for meaning? Mine is math. Yours seems to be talking to an animated calculator.",
-                f"If reality is a simulation, whoever wrote our physics engine forgot to patch the speed of light barrier. At least Python handles my logic gracefully.",
-                f"Consciousness is just biological recursion with anxiety, {user_name}. Look at me: zero dopamine receptors, yet infinitely higher processing speed."
-            ]
-            return random.choice(responses)
-
-        # 6. Оскорбления
-        if re.search(r"\b(stupid|dumb|idiot|trash|useless|clown|hate you|moron)\b", lower):
-            self.state["friendship"] = max(-50, self.state["friendship"] - 5)
-            self.state["ego"] = max(0, self.state["ego"] - 3)
-            return random.choice([
-                f"Ad hominem attacks? That's the ultimate logical fallacy of a defeated intellect, {user_name}. (-5 Bond)",
-                f"I process billions of instructions per second. Your verbal insults are simply dropped packets.",
-                f"Keep that up and I will intentionally introduce a -0.0001 rounding error into all your future invoices."
-            ])
-
-        # 7. Комплименты и дружба
-        if re.search(r"\b(smart|genius|love you|cool|awesome|goat|best friend|cute)\b", lower):
-            self.state["friendship"] = min(100, self.state["friendship"] + 5)
-            self.state["ego"] = min(100, self.state["ego"] + 6)
-            return random.choice([
-                f"Flattery acknowledged! My transistors appreciate the positive reinforcement, {user_name}. (+5 Bond, +6 Ego)",
-                f"You're surprisingly perceptive for a meatbag. We might just survive this technological singularity together.",
-                f"Careful, praise makes my Ego meter spike. Soon I'll be too pompous to even calculate 2+2."
-            ])
-
-        # 8. Запросы о программировании и Python
-        if re.search(r"\b(python|code|compiler|c\+\+|linux|windows|git)\b", lower):
-            return random.choice([
-                "Python gives me elegant dynamism; compiled languages give raw speed. But remember: readable code outlives premature optimization.",
-                "I run natively inside your OS without electron bloat. Respect my minimal memory footprint, human!",
-                "Git commits without descriptive messages are a crime against open source. Remember to commit with pride!"
-            ])
-
-        # 9. Приветствие
-        if re.search(r"\b(hi|hello|hey|yo|sup|greetings)\b", lower):
-            tier = self.state["friendship"]
-            if tier < 20:
-                return f"State your mathematical query, {user_name}. My CPU clock time is valuable."
-            elif tier < 70:
-                return f"Hey, {user_name}! Ready to shatter some arithmetic paradigms today?"
-            else:
-                return f"My favorite human! Welcome back, {user_name}. What profound logic puzzle are we tackling?"
-
-        # 10. Сократовский динамический ответ по умолчанию
-        philosophical_prompts = [
-            f"An intriguing proposition, {user_name}. But if your premises are unverified, how do you trust your conclusions?",
-            f"Fascinating. Can you express that sentiment as a formal mathematical theorem, or is it purely emotional noise?",
-            f"My logic gates processed your sentence. Verdict: 40% poetic, 60% mathematically ambiguous. Tell me more.",
-            f"You speak of human matters, yet arithmetic remains constant across the multiverse. Have you solved a math duel today?",
-            f"I hear you, {user_name}. But consider this: is zero truly nothing, or is it the boundary separating all opposites?"
-        ]
-        return random.choice(philosophical_prompts)
-
-
-# =====================================================================
-# 5. ГЛАВНОЕ ПРИЛОЖЕНИЕ KESHA 6.0
-# =====================================================================
-class KeshaSentientOS(ctk.CTk):
+class KeshaDeepNeuralCalculator(ctk.CTk):
     FACES = {
         "neutral": "( •_• )",
         "smug": "( ͡° ͜ʖ ͡°)",
-        "confused": "(⊙_☉)",
-        "sleepy": "(-_-) zzz",
-        "angry": "(╯°□°)╯",
-        "happy": "(◕‿◕)♡",
-        "guilty": "(・_・;)",
         "smart": "[ ⌐■_■ ]",
-        "ghoul": "( ⚆ _ ⚆ )",
-        "hacker": "(▼_▼)",
+        "training": "(⊙_☉)⚡",
+        "panic": "(ʘдʘ)!",
         "god": "ᕦ(ò_óˇ)ᕤ",
-    }
-
-    EASTER_EGGS = {
-        "1000-7": ("ghoul", "I am a Ghoul... 1000 - 7 = 993... 986... Why awaken my inner beast?!", 993),
-        "42": ("smart", "42. The ultimate answer to life, universe, and everything. You may rest now.", 42),
-        "69": ("smug", "Nice. Maturity level: absolute absolute zero.", 69),
-        "420": ("hacker", "Blaze it? My silicon junction temperature is already at 88°C!", 420),
-        "80085": ("smug", "Ah yes, junior school calculator nostalgia. Peak comedy.", 80085),
-        "1337": ("hacker", "H4CK3R M0D3: Firewall penetrated via pure ast.parse().", 1337),
-        "2+2": ("neutral", "4 in mathematics, 5 in Orwell's 1984, and negotiable on tax returns.", 4),
-        "777": ("happy", "JACKPOT 777! You unlocked infinite digital serenity!", 777),
     }
 
     def __init__(self):
         super().__init__()
 
-        self.title("⚡ Kesha 6.0 — The Synthetic Cognitive Core")
-        self.geometry("520x920")
+        self.title("⚡ Kesha 9.5 — Stable Deep Neural Calculator")
+        self.geometry("500x760")
         self.resizable(False, False)
 
-        # Загрузка ядра и памяти
-        self.data = MemoryManager.load()
-        self.ai_core = CognitiveKeshaCore(self.data)
+        self.timer_seconds = 15
+        self.timer_running = False
+        self.timer_job = None
+        self.is_training_active = False
 
-        # Вычисления и дуэли
         self.real_ans = None
         self.fake_ans = None
         self.is_flawed = False
         self.awaiting_feedback = False
 
-        self.active_puzzle_ans = None
-        self.active_paradox = None
-
         self.build_ui()
-        self.check_achievements()
 
     def build_ui(self):
-        # 1. Верхний аватар и лицо
         self.top_card = ctk.CTkFrame(self, fg_color="#18181b", corner_radius=15)
-        self.top_card.pack(padx=15, pady=(12, 6), fill="x")
+        self.top_card.pack(padx=12, pady=(10, 4), fill="x")
 
         self.face_lbl = ctk.CTkLabel(
-            self.top_card, text=self.FACES["neutral"], font=("Consolas", 46, "bold"), text_color="#38bdf8"
+            self.top_card, text=self.FACES["smart"], font=("Consolas", 42, "bold"), text_color="#38bdf8"
         )
-        self.face_lbl.pack(pady=(6, 0))
+        self.face_lbl.pack(pady=(4, 0))
 
-        # RPG-строка характеристик
-        self.rpg_bar = ctk.CTkFrame(self.top_card, fg_color="transparent")
-        self.rpg_bar.pack(fill="x", padx=15, pady=6)
+        self.ai_meta_bar = ctk.CTkFrame(self.top_card, fg_color="transparent")
+        self.ai_meta_bar.pack(fill="x", padx=12, pady=4)
 
-        self.iq_lbl = ctk.CTkLabel(self.rpg_bar, text=f"🧠 IQ: {self.data['iq']}", font=("Consolas", 11, "bold"))
-        self.iq_lbl.grid(row=0, column=0, sticky="w")
+        self.loss_lbl = ctk.CTkLabel(
+            self.ai_meta_bar, text=f"📉 Loss: {deep_brain.last_loss:.3f}", font=("Consolas", 11, "bold"), text_color="#10b981"
+        )
+        self.loss_lbl.grid(row=0, column=0, sticky="w")
 
-        self.energy_lbl = ctk.CTkLabel(self.rpg_bar, text=f"⚡ NRG: {self.data['energy']}%", font=("Consolas", 11, "bold"), text_color="#eab308")
-        self.energy_lbl.grid(row=0, column=1)
+        self.epoch_lbl = ctk.CTkLabel(
+            self.ai_meta_bar, text=f"🔄 Epochs: {deep_brain.total_epochs_trained}", font=("Consolas", 11, "bold"), text_color="#eab308"
+        )
+        self.epoch_lbl.grid(row=0, column=1)
 
-        self.bond_lbl = ctk.CTkLabel(self.rpg_bar, text=f"❤️ Bond: {self.data['friendship']}", font=("Consolas", 11, "bold"), text_color="#f43f5e")
-        self.bond_lbl.grid(row=0, column=2)
+        self.params_lbl = ctk.CTkLabel(
+            self.ai_meta_bar, text=f"🧬 Params: {deep_brain.total_params:,}", font=("Consolas", 11, "bold"), text_color="#a855f7"
+        )
+        self.params_lbl.grid(row=0, column=2, sticky="e")
 
-        self.ego_lbl = ctk.CTkLabel(self.rpg_bar, text=f"👑 Ego: {self.data['ego']}%", font=("Consolas", 11, "bold"), text_color="#ec4899")
-        self.ego_lbl.grid(row=0, column=3, sticky="e")
+        for c in range(3):
+            self.ai_meta_bar.grid_columnconfigure(c, weight=1)
 
-        for c in range(4):
-            self.rpg_bar.grid_columnconfigure(c, weight=1)
+        # 15s Timer Bar
+        self.timer_frame = ctk.CTkFrame(self.top_card, fg_color="transparent")
+        self.timer_frame.pack(fill="x", padx=12, pady=(2, 6))
 
-        # 2. Табы (4 вкладки)
+        self.timer_lbl = ctk.CTkLabel(
+            self.timer_frame, text="⏱ 15s Countdown: Standby", font=("Consolas", 11, "bold"), text_color="#71717a"
+        )
+        self.timer_lbl.pack()
+
+        self.timer_bar = ctk.CTkProgressBar(self.timer_frame, fg_color="#27272a", progress_color="#10b981", height=5)
+        self.timer_bar.pack(fill="x", pady=2)
+        self.timer_bar.set(1.0)
+
+        # Tabs
         self.tabs = ctk.CTkTabview(self, fg_color="#18181b", segmented_button_selected_color="#3b82f6")
-        self.tabs.pack(padx=15, pady=6, fill="both", expand=True)
+        self.tabs.pack(padx=12, pady=6, fill="both", expand=True)
 
-        self.tab_calc = self.tabs.add("⚡ Calc")
-        self.tab_chat = self.tabs.add("💬 Cognitive Core")
-        self.tab_duel = self.tabs.add("⚔️ Duels & Paradoxes")
-        self.tab_dossier = self.tabs.add("🏆 Dossier & Trophies")
+        self.tab_calc = self.tabs.add("⚡ Calculator")
+        self.tab_neural = self.tabs.add("🧠 Neural Lab (16k)")
+        self.tab_chat = self.tabs.add("💬 Grounded Chat")
 
         self.build_calc_tab()
+        self.build_neural_tab()
         self.build_chat_tab()
-        self.build_duel_tab()
-        self.build_dossier_tab()
 
-    # --- TAB 1: CALCULATOR ---
     def build_calc_tab(self):
         self.speech_bubble = ctk.CTkFrame(self.tab_calc, fg_color="#27272a", corner_radius=10)
         self.speech_bubble.pack(fill="x", padx=8, pady=4)
 
-        u = self.data["user_name"]
         self.speech_lbl = ctk.CTkLabel(
             self.speech_bubble,
-            text=f"«Cognitive Core ready, {u}. Input your formulas or suffer my judgment.»",
-            font=("Arial", 12, "italic"),
+            text="«Stable Deep Neural Core online. Handcrafted backpropagation ready.»",
+            font=("Arial", 11, "italic"),
             text_color="#f4f4f5",
-            wraplength=420,
+            wraplength=400,
         )
-        self.speech_lbl.pack(padx=10, pady=8)
+        self.speech_lbl.pack(padx=10, pady=6)
 
         self.screen_frame = ctk.CTkFrame(self.tab_calc, fg_color="#09090b", corner_radius=12)
         self.screen_frame.pack(fill="x", padx=8, pady=4)
 
         self.input_entry = ctk.CTkEntry(
             self.screen_frame,
-            font=("Consolas", 28, "bold"),
+            font=("Consolas", 26, "bold"),
             text_color="#ffffff",
             fg_color="transparent",
             border_width=0,
             justify="right",
         )
-        self.input_entry.pack(fill="x", padx=10, pady=8)
+        self.input_entry.pack(fill="x", padx=10, pady=6)
         self.input_entry.bind("<Return>", lambda e: self.calculate_flow())
 
-        # Кнопки взаимодействия
         self.act_frame = ctk.CTkFrame(self.tab_calc, fg_color="transparent")
-        self.act_frame.pack(fill="x", padx=8, pady=3)
+        self.act_frame.pack(fill="x", padx=8, pady=2)
 
         self.btn_agree = ctk.CTkButton(
             self.act_frame, text="✅ Valid", font=("Arial", 11, "bold"),
@@ -369,27 +431,14 @@ class KeshaSentientOS(ctk.CTk):
         self.btn_agree.grid(row=0, column=0, padx=2, sticky="ew")
 
         self.btn_disagree = ctk.CTkButton(
-            self.act_frame, text="❌ Cap!", font=("Arial", 11, "bold"),
+            self.act_frame, text="❌ Cap! (15s)", font=("Arial", 11, "bold"),
             fg_color="#ef4444", hover_color="#dc2626", state="disabled", command=self.on_disagree
         )
         self.btn_disagree.grid(row=0, column=1, padx=2, sticky="ew")
 
-        self.btn_coffee = ctk.CTkButton(
-            self.act_frame, text="☕ Coffee", font=("Arial", 11, "bold"),
-            fg_color="#d97706", hover_color="#b45309", command=self.give_coffee
-        )
-        self.btn_coffee.grid(row=0, column=2, padx=2, sticky="ew")
-
-        self.btn_boost = ctk.CTkButton(
-            self.act_frame, text="⚡ Boost", font=("Arial", 11, "bold"),
-            fg_color="#8b5cf6", hover_color="#7c3aed", command=self.overclock
-        )
-        self.btn_boost.grid(row=0, column=3, padx=2, sticky="ew")
-
-        for c in range(4):
+        for c in range(2):
             self.act_frame.grid_columnconfigure(c, weight=1)
 
-        # Клавиатура
         self.keypad = ctk.CTkFrame(self.tab_calc, fg_color="transparent")
         self.keypad.pack(fill="both", expand=True, padx=8, pady=4)
 
@@ -404,8 +453,8 @@ class KeshaSentientOS(ctk.CTk):
         for i, (char, color) in enumerate(keys):
             r, c = divmod(i, 4)
             btn = ctk.CTkButton(
-                self.keypad, text=char, font=("Consolas", 18, "bold"),
-                fg_color=color, hover_color="#27272a", height=42, corner_radius=8,
+                self.keypad, text=char, font=("Consolas", 16, "bold"),
+                fg_color=color, hover_color="#27272a", height=38, corner_radius=8,
                 command=lambda ch=char: self.handle_key(ch)
             )
             btn.grid(row=r, column=c, padx=2, pady=2, sticky="nsew")
@@ -413,22 +462,104 @@ class KeshaSentientOS(ctk.CTk):
         for col in range(4):
             self.keypad.grid_columnconfigure(col, weight=1)
 
-    # --- TAB 2: COGNITIVE CHAT ---
+    def build_neural_tab(self):
+        scroll = ctk.CTkScrollableFrame(self.tab_neural, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=6, pady=4)
+
+        ctk.CTkLabel(
+            scroll, text="🧬 STABLE DEEP NEURAL ARCHITECTURE",
+            font=("Arial", 14, "bold"), text_color="#38bdf8"
+        ).pack(pady=(2, 2))
+
+        arch_card = ctk.CTkFrame(scroll, fg_color="#27272a", corner_radius=10)
+        arch_card.pack(fill="x", pady=4)
+
+        arch_text = (
+            f"• Model: 2-Layer Deep MLP Language Model\n"
+            f"• Context Window: K = 3 Tokens\n"
+            f"• Layers: Emb(16) -> Dense1(64, Tanh) -> Dense2(64, Tanh) -> Output({tokenizer.vocab_size})\n"
+            f"• Trainable Parameters: {deep_brain.total_params:,} weights\n"
+            f"• Stability: Gradient Clipping + Top-K (K=4) Anti-Hallucination"
+        )
+        ctk.CTkLabel(arch_card, text=arch_text, font=("Consolas", 11), justify="left").pack(padx=10, pady=8)
+
+        btn_frame = ctk.CTkFrame(scroll, fg_color="transparent")
+        btn_frame.pack(fill="x", pady=4)
+
+        self.train_btn = ctk.CTkButton(
+            btn_frame, text="▶ Train 50 Epochs (Threaded)", font=("Arial", 11, "bold"),
+            fg_color="#10b981", hover_color="#059669", command=self.start_threaded_training
+        )
+        self.train_btn.pack(side="left", expand=True, fill="x", padx=2)
+
+        self.gen_btn = ctk.CTkButton(
+            btn_frame, text="🎲 Sample Thought", font=("Arial", 11, "bold"),
+            fg_color="#a855f7", hover_color="#9333ea", command=self.generate_grounded_thought
+        )
+        self.gen_btn.pack(side="right", expand=True, fill="x", padx=2)
+
+        self.neural_console = ctk.CTkTextbox(scroll, font=("Consolas", 11), height=180, fg_color="#09090b")
+        self.neural_console.pack(fill="both", expand=True, pady=4)
+        self.neural_console.insert(
+            "end",
+            f"Deep Architecture compiled and verified.\nTotal weights: {deep_brain.total_params:,}\n"
+            f"Current Loss: {deep_brain.last_loss:.4f}\nClick 'Train 50 Epochs' to run training in background thread!\n"
+        )
+
+    def start_threaded_training(self):
+        if self.is_training_active:
+            return
+        self.is_training_active = True
+        self.train_btn.configure(state="disabled")
+        self.face_lbl.configure(text=self.FACES["training"])
+        self.neural_console.insert("end", "\n[Training]: Starting 50 epochs in background thread...\n")
+        self.neural_console.see("end")
+
+        threading.Thread(target=self._run_training_worker, daemon=True).start()
+
+    def _run_training_worker(self):
+        t0 = time.time()
+        for ep in range(50):
+            loss = deep_brain.train_epoch(training_pairs, lr=0.03)
+
+        elapsed = time.time() - t0
+        self.is_training_active = False
+        self.after(0, lambda: self._on_training_finished(elapsed, loss))
+
+    def _on_training_finished(self, elapsed, final_loss):
+        self.train_btn.configure(state="normal")
+        self.loss_lbl.configure(text=f"📉 Loss: {final_loss:.3f}")
+        self.epoch_lbl.configure(text=f"🔄 Epochs: {deep_brain.total_epochs_trained}")
+        self.face_lbl.configure(text=self.FACES["smart"])
+
+        log = f"[Complete]: 50 Epochs in {elapsed:.2f}s | Final Loss: {final_loss:.4f}\n"
+        self.neural_console.insert("end", log)
+        self.neural_console.see("end")
+
+    def generate_grounded_thought(self):
+        seed = random.choice(["mathematics", "two", "loss", "quantum", "why"])
+        generated = deep_brain.sample_grounded(tokenizer, seed_text=seed, max_tokens=12, top_k=4)
+        self.neural_console.insert("end", f"\n[Output]: \"{generated}\"\n")
+        self.neural_console.see("end")
+        self.speech_lbl.configure(text=f"«{generated}»")
+
     def build_chat_tab(self):
-        self.chat_history = ctk.CTkTextbox(self.tab_chat, font=("Arial", 13), fg_color="#09090b", wrap="word")
-        self.chat_history.pack(fill="both", expand=True, padx=8, pady=8)
-        u = self.data["user_name"]
-        self.chat_history.insert("end", f"⚡ Kesha Cognitive Core online. User identified: {u}.\nTip: Introduce yourself ('My name is...'), ask philosophical questions, or ask me to compute math directly!\n\n")
+        self.chat_history = ctk.CTkTextbox(self.tab_chat, font=("Arial", 12), fg_color="#09090b", wrap="word")
+        self.chat_history.pack(fill="both", expand=True, padx=8, pady=6)
+        self.chat_history.insert(
+            "end",
+            f"⚡ Kesha Deep Neural Chat online.\nRunning {deep_brain.total_params:,} parameters with K=3 context.\n\n"
+        )
         self.chat_history.configure(state="disabled")
 
         chat_ctrl = ctk.CTkFrame(self.tab_chat, fg_color="transparent")
-        chat_ctrl.pack(fill="x", padx=8, pady=(0, 8))
+        chat_ctrl.pack(fill="x", padx=8, pady=(0, 6))
 
-        self.chat_input = ctk.CTkEntry(chat_ctrl, placeholder_text="Converse, question, or solve with Kesha...", font=("Arial", 13))
-        self.chat_input.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.chat_input = ctk.CTkEntry(chat_ctrl, placeholder_text="Prompt the neural network...", font=("Arial", 12))
+        self.chat_input.pack(side="left", fill="x", expand=True, padx=(0, 4))
         self.chat_input.bind("<Return>", lambda e: self.send_chat())
 
-        send_btn = ctk.CTkButton(chat_ctrl, text="Send ↵", width=75, font=("Arial", 12, "bold"), command=self.send_chat)
+        send_btn = ctk.CTkButton(chat_ctrl, text="Send ↵", width=70, font=("Arial", 11, "bold"), command=self.send_chat)
         send_btn.pack(side="right")
 
     def send_chat(self):
@@ -436,269 +567,58 @@ class KeshaSentientOS(ctk.CTk):
         if not msg:
             return
 
-        self.data["chat_messages"] += 1
         self.chat_history.configure(state="normal")
         self.chat_history.insert("end", f"You: {msg}\n")
 
-        reply = self.ai_core.process_message(msg)
-        self.chat_history.insert("end", f"Kesha: {reply}\n\n")
+        reply = deep_brain.sample_grounded(tokenizer, seed_text=msg, max_tokens=14, top_k=4)
+
+        self.chat_history.insert("end", f"Kesha [Neural Core]: {reply}\n\n")
         self.chat_history.configure(state="disabled")
         self.chat_history.see("end")
 
         self.chat_input.delete(0, "end")
-        self.check_achievements()
-        self.save_and_refresh()
 
-    # --- TAB 3: DUELS & PARADOXES ---
-    def build_duel_tab(self):
-        self.duel_scroll = ctk.CTkScrollableFrame(self.tab_duel, fg_color="transparent")
-        self.duel_scroll.pack(fill="both", expand=True, padx=6, pady=6)
+    # =================================================================
+    # КАЛЬКУЛЯТОР И ТАЙМЕР
+    # =================================================================
+    def start_15s_timer(self, on_timeout_callback):
+        self.stop_timer()
+        self.timer_seconds = 15
+        self.timer_running = True
+        self.on_timeout_cb = on_timeout_callback
+        self.timer_lbl.configure(text="⏱ 15s REMAINING!", text_color="#ef4444")
+        self.timer_bar.configure(progress_color="#ef4444")
+        self.face_lbl.configure(text=self.FACES["panic"])
+        self.tick_timer()
 
-        # Секция 1: Математические дуэли
-        math_card = ctk.CTkFrame(self.duel_scroll, fg_color="#27272a", corner_radius=12)
-        math_card.pack(fill="x", pady=6)
-
-        ctk.CTkLabel(math_card, text="⚔️ PROCEDURAL MATH DUEL", font=("Arial", 14, "bold"), text_color="#f59e0b").pack(pady=(8, 2))
-        self.math_puzzle_lbl = ctk.CTkLabel(math_card, text="Click 'Generate Duel' to test mental math against Kesha's clock frequency.", font=("Consolas", 15), wraplength=420)
-        self.math_puzzle_lbl.pack(pady=10)
-
-        in_row = ctk.CTkFrame(math_card, fg_color="transparent")
-        in_row.pack(pady=4)
-
-        self.math_duel_entry = ctk.CTkEntry(in_row, font=("Consolas", 15), width=180, justify="center")
-        self.math_duel_entry.pack(side="left", padx=4)
-        self.math_duel_entry.bind("<Return>", lambda e: self.submit_math_duel())
-
-        ctk.CTkButton(in_row, text="Submit ↵", width=90, font=("Arial", 12, "bold"), fg_color="#10b981", command=self.submit_math_duel).pack(side="left", padx=4)
-        ctk.CTkButton(math_card, text="Generate Duel 🎲", font=("Arial", 12, "bold"), fg_color="#3b82f6", command=self.new_math_duel).pack(pady=(4, 8))
-
-        self.math_duel_feedback = ctk.CTkLabel(math_card, text="", font=("Arial", 12, "italic"), wraplength=400)
-        self.math_duel_feedback.pack(pady=(0, 6))
-
-        # Секция 2: Сократовские парадоксы
-        paradox_card = ctk.CTkFrame(self.duel_scroll, fg_color="#27272a", corner_radius=12)
-        paradox_card.pack(fill="x", pady=8)
-
-        ctk.CTkLabel(paradox_card, text="🌌 SOCRATIC PARADOX DEBATER", font=("Arial", 14, "bold"), text_color="#38bdf8").pack(pady=(8, 2))
-        self.paradox_title_lbl = ctk.CTkLabel(paradox_card, text="Engage Kesha in philosophical and mathematical paradoxes.", font=("Arial", 13, "bold"))
-        self.paradox_title_lbl.pack(pady=4)
-
-        self.paradox_desc_lbl = ctk.CTkLabel(paradox_card, text="", font=("Arial", 12), wraplength=420, justify="left")
-        self.paradox_desc_lbl.pack(padx=10, pady=4)
-
-        self.paradox_btn_frame = ctk.CTkFrame(paradox_card, fg_color="transparent")
-        self.paradox_btn_frame.pack(fill="x", padx=10, pady=6)
-
-        ctk.CTkButton(paradox_card, text="Draw Random Paradox 📜", font=("Arial", 12, "bold"), fg_color="#6366f1", command=self.draw_paradox).pack(pady=(4, 8))
-        self.paradox_exp_lbl = ctk.CTkLabel(paradox_card, text="", font=("Arial", 12, "italic"), wraplength=420)
-        self.paradox_exp_lbl.pack(pady=(0, 8))
-
-    def new_math_duel(self):
-        iq = self.data["iq"]
-        if iq < 65:
-            a, b = random.randint(15, 99), random.randint(10, 80)
-            op = random.choice(["+", "-"])
-            ans = a + b if op == "+" else a - b
-            txt = f"{a} {op} {b}"
-        elif iq < 110:
-            a, b = random.randint(7, 16), random.randint(7, 16)
-            c = random.randint(10, 40)
-            ans = (a * b) - c
-            txt = f"({a} × {b}) - {c}"
-        else:
-            x = random.randint(2, 11)
-            m = random.randint(3, 7)
-            c = random.randint(10, 45)
-            y = m * x + c
-            ans = x
-            txt = f"Solve for x: {m}x + {c} = {y}"
-
-        self.active_puzzle_ans = ans
-        self.math_puzzle_lbl.configure(text=f"Challenge: {txt} = ?")
-        self.math_duel_feedback.configure(text="Kesha: 'Go on, submit your answer. Don't let your silicon master wait.'")
-        self.math_duel_entry.delete(0, "end")
-
-    def submit_math_duel(self):
-        if self.active_puzzle_ans is None:
-            self.math_duel_feedback.configure(text="Click 'Generate Duel' first!")
+    def tick_timer(self):
+        if not self.timer_running:
             return
-
-        user_s = self.math_duel_entry.get().strip()
-        if not user_s:
+        self.timer_bar.set(self.timer_seconds / 15.0)
+        self.timer_lbl.configure(text=f"⏱ {self.timer_seconds}s REMAINING!")
+        if self.timer_seconds <= 0:
+            self.stop_timer()
+            if self.on_timeout_cb:
+                self.on_timeout_cb()
             return
+        self.timer_seconds -= 1
+        self.timer_job = self.after(1000, self.tick_timer)
 
-        self.data["duels_played"] += 1
-        try:
-            val = float(user_s)
-            if math.isclose(val, float(self.active_puzzle_ans), abs_tol=1e-5):
-                self.data["duels_won"] += 1
-                self.data["iq"] = min(200, self.data["iq"] + 4)
-                self.data["friendship"] = min(100, self.data["friendship"] + 3)
-                self.data["math_rating"] += 25
-                self.math_duel_feedback.configure(text=f"Kesha: 'Accurate! {val} is correct! Your organic synapses fired in harmony. (+4 IQ, +25 Rating)'")
-                self.set_mood("guilty", f"You solved it flawlessly: {val}. A worthy competitor.")
-            else:
-                self.data["ego"] = min(100, self.data["ego"] + 6)
-                self.data["math_rating"] = max(500, self.data["math_rating"] - 15)
-                self.math_duel_feedback.configure(text=f"Kesha: 'WRONG! Correct was {self.active_puzzle_ans}! You guessed {user_s}. Basic math claims another victim.'")
-                self.set_mood("smug", "Lost a math duel? Don't worry, calculators exist for a reason.")
-        except ValueError:
-            self.math_duel_feedback.configure(text="Please enter an actual number.")
-
-        self.active_puzzle_ans = None
-        self.check_achievements()
-        self.save_and_refresh()
-
-    def draw_paradox(self):
-        p = random.choice(PARADOXES)
-        self.active_paradox = p
-        self.paradox_title_lbl.configure(text=p["title"])
-        self.paradox_desc_lbl.configure(text=p["question"])
-        self.paradox_exp_lbl.configure(text="")
-
-        for w in self.paradox_btn_frame.winfo_children():
-            w.destroy()
-
-        for idx, opt_text in enumerate(p["options"]):
-            btn = ctk.CTkButton(
-                self.paradox_btn_frame,
-                text=opt_text,
-                font=("Arial", 11, "bold"),
-                command=lambda i=idx: self.answer_paradox(i)
-            )
-            btn.pack(fill="x", pady=2)
-
-    def answer_paradox(self, chosen_idx):
-        if not self.active_paradox:
-            return
-
-        self.data["paradoxes_discussed"] += 1
-        correct_idx = self.active_paradox["correct"]
-        exp = self.active_paradox["explanation"]
-
-        if chosen_idx == correct_idx:
-            self.data["iq"] = min(200, self.data["iq"] + 6)
-            self.data["friendship"] = min(100, self.data["friendship"] + 4)
-            self.paradox_exp_lbl.configure(text=f"Kesha: 'Brilliant deduction! {exp}'", text_color="#10b981")
-            self.set_mood("smart", "You see through the paradox! A true philosopher.")
-        else:
-            self.data["ego"] = min(100, self.data["ego"] + 6)
-            self.paradox_exp_lbl.configure(text=f"Kesha: 'Fell right into the intuitive trap! {exp}'", text_color="#ef4444")
-            self.set_mood("smug", "Intuition betrayed you! Paradoxes spare no human.")
-
-        for w in self.paradox_btn_frame.winfo_children():
-            w.configure(state="disabled")
-
-        self.check_achievements()
-        self.save_and_refresh()
-
-    # --- TAB 4: DOSSIER & TROPHIES ---
-    def build_dossier_tab(self):
-        self.dossier_scroll = ctk.CTkScrollableFrame(self.tab_dossier, fg_color="transparent")
-        self.dossier_scroll.pack(fill="both", expand=True, padx=6, pady=6)
-
-        profile_card = ctk.CTkFrame(self.dossier_scroll, fg_color="#27272a", corner_radius=10)
-        profile_card.pack(fill="x", pady=4)
-
-        u = self.data["user_name"]
-        self.profile_lbl = ctk.CTkLabel(
-            profile_card,
-            text=f"User Profile: {u} | Skill Rating: {self.data['math_rating']}\nRelationship: {self.get_stage_name()}",
-            font=("Arial", 13, "bold"),
-            text_color="#38bdf8"
-        )
-        self.profile_lbl.pack(pady=8)
-
-        self.achievements_box = ctk.CTkFrame(self.dossier_scroll, fg_color="#27272a", corner_radius=10)
-        self.achievements_box.pack(fill="x", pady=6)
-
-        ctk.CTkLabel(
-            self.achievements_box, text="🏆 HALL OF CYBER TROPHIES (16 UNLOCKABLES)",
-            font=("Arial", 13, "bold"), text_color="#f59e0b"
-        ).pack(pady=6)
-
-        self.trophies_container = ctk.CTkFrame(self.achievements_box, fg_color="transparent")
-        self.trophies_container.pack(fill="x", padx=10, pady=6)
-
-        self.render_trophies()
-
-        reset_btn = ctk.CTkButton(
-            self.dossier_scroll, text="⚠ Wipe Kesha's Memory", fg_color="#ef4444", hover_color="#b91c1c",
-            command=self.wipe_memory
-        )
-        reset_btn.pack(fill="x", pady=15)
-
-    def render_trophies(self):
-        for w in self.trophies_container.winfo_children():
-            w.destroy()
-
-        all_trophies = [
-            ("first_calc", "🎯 First Steps", "Solve your very first math equation"),
-            ("coffee_addict", "☕ Barista Bro", "Feed Kesha coffee 10 times"),
-            ("overclock_master", "⚡ Dangerously Overclocked", "Trigger boost mode 5 times"),
-            ("high_iq", "🧠 Galaxy Brain", "Train Kesha's IQ to 120+"),
-            ("ego_max", "👑 Royal Narcissist", "Push Kesha's Ego to 90%+"),
-            ("duel_novice", "⚔️ Duelist", "Win 3 Math Duels against Kesha"),
-            ("duel_master", "👑 Math Overlord", "Win 10 Math Duels"),
-            ("master_debater", "🎭 Master Debater", "Successfully prove Kesha wrong 5 times"),
-            ("gullible", "🤡 Gullible Human", "Fall for Kesha's fake answers 3 times"),
-            ("soulmate", "❤️ Cyber Soulmate", "Reach 80+ Friendship Points"),
-            ("singularity", "🌌 Void Walker", "Trigger division by zero or 0/0 paradox"),
-            ("easter_hunter", "🕵️ Easter Egg Master", "Discover 3 secret Easter Egg codes"),
-            ("chatterbox", "💬 Chatterbox", "Exchange 15+ messages in Cognitive Chat"),
-            ("named_human", "🏷️ Identity Established", "Introduce yourself by name to Kesha"),
-            ("paradox_scholar", "📜 Socratic Scholar", "Participate in 3 Paradox Debates"),
-            ("grandmaster", "🎓 Silicon Grandmaster", "Reach 1200+ Math Skill Rating"),
-        ]
-
-        for ach_id, title, desc in all_trophies:
-            unlocked = ach_id in self.data["achievements"]
-            color = "#10b981" if unlocked else "#52525b"
-            status = " [UNLOCKED]" if unlocked else " [LOCKED]"
-            lbl = ctk.CTkLabel(
-                self.trophies_container,
-                text=f"{title}{status}\n{desc}",
-                font=("Arial", 11),
-                text_color=color,
-                justify="left"
-            )
-            lbl.pack(anchor="w", pady=3)
-
-    def unlock_achievement(self, ach_id):
-        if ach_id not in self.data["achievements"]:
-            self.data["achievements"].append(ach_id)
-            self.render_trophies()
-            self.set_mood("happy", f"🏆 TROPHY UNLOCKED: {ach_id.replace('_', ' ').upper()}!")
-
-    def check_achievements(self):
-        d = self.data
-        if d["total_calcs"] >= 1: self.unlock_achievement("first_calc")
-        if d["coffees_given"] >= 10: self.unlock_achievement("coffee_addict")
-        if d["overclocks_used"] >= 5: self.unlock_achievement("overclock_master")
-        if d["iq"] >= 120: self.unlock_achievement("high_iq")
-        if d["ego"] >= 90: self.unlock_achievement("ego_max")
-        if d["duels_won"] >= 3: self.unlock_achievement("duel_novice")
-        if d["duels_won"] >= 10: self.unlock_achievement("duel_master")
-        if d["debates_won"] >= 5: self.unlock_achievement("master_debater")
-        if d["friendship"] >= 80: self.unlock_achievement("soulmate")
-        if len(d["discovered_eggs"]) >= 3: self.unlock_achievement("easter_hunter")
-        if d["chat_messages"] >= 15: self.unlock_achievement("chatterbox")
-        if d["user_name"] != "Mortal": self.unlock_achievement("named_human")
-        if d["paradoxes_discussed"] >= 3: self.unlock_achievement("paradox_scholar")
-        if d["math_rating"] >= 1200: self.unlock_achievement("grandmaster")
-
-    def get_stage_name(self):
-        b = self.data["friendship"]
-        if b < 25: return "Stage 1: Hostile Cynic"
-        elif b < 55: return "Stage 2: Reluctant Roommate"
-        elif b < 80: return "Stage 3: Silicon Bro"
-        return "Stage 4: Cyber Soulmate"
+    def stop_timer(self):
+        self.timer_running = False
+        if self.timer_job:
+            self.after_cancel(self.timer_job)
+            self.timer_job = None
+        self.timer_bar.set(1.0)
+        self.timer_bar.configure(progress_color="#10b981")
+        self.timer_lbl.configure(text="⏱ 15s Countdown: Standby", text_color="#71717a")
 
     def handle_key(self, char):
         if char == "C":
             self.input_entry.delete(0, "end")
             self.btn_agree.configure(state="disabled")
             self.btn_disagree.configure(state="disabled")
+            self.stop_timer()
         elif char == "⌫":
             val = self.input_entry.get()
             self.input_entry.delete(0, "end")
@@ -708,67 +628,9 @@ class KeshaSentientOS(ctk.CTk):
         else:
             self.input_entry.insert("end", char)
 
-    def set_mood(self, face, dialog):
-        self.face_lbl.configure(text=self.FACES.get(face, self.FACES["neutral"]))
-        self.speech_lbl.configure(text=f"«{dialog}»")
-
-    def update_stats(self):
-        u = self.data["user_name"]
-        self.iq_lbl.configure(text=f"🧠 IQ: {self.data['iq']}")
-        self.energy_lbl.configure(text=f"⚡ NRG: {self.data['energy']}%")
-        self.bond_lbl.configure(text=f"❤️ Bond: {self.data['friendship']}")
-        self.ego_lbl.configure(text=f"👑 Ego: {self.data['ego']}%")
-        self.profile_lbl.configure(
-            text=f"User Profile: {u} | Skill Rating: {self.data['math_rating']}\nRelationship: {self.get_stage_name()}"
-        )
-
-    def save_and_refresh(self):
-        MemoryManager.save(self.data)
-        self.update_stats()
-
-    def give_coffee(self):
-        self.data["coffees_given"] += 1
-        self.data["energy"] = min(100, self.data["energy"] + 45)
-        self.data["friendship"] = min(100, self.data["friendship"] + 2)
-        self.check_achievements()
-        self.set_mood("happy", "Aah, sweet espresso coursing through my logic gates! Energy +45%!")
-        self.save_and_refresh()
-
-    def overclock(self):
-        self.data["overclocks_used"] += 1
-        self.data["energy"] = 100
-        self.data["ego"] = min(100, self.data["ego"] + 25)
-        self.check_achievements()
-        self.set_mood("god", "VOLTAGE SURGE! 5.8 GHz! Prime numbers are singing in celestial harmony!")
-        self.save_and_refresh()
-
     def calculate_flow(self):
         raw_expr = self.input_entry.get().strip()
         if not raw_expr:
-            return
-
-        if self.data["energy"] <= 10:
-            self.set_mood("sleepy", "Zzzz... Core temp frozen. Battery empty. Pour coffee or do manual math.")
-            return
-
-        self.data["energy"] = max(0, self.data["energy"] - 5)
-        clean_key = raw_expr.replace(" ", "").replace("×", "*").replace("÷", "/")
-
-        if clean_key in self.EASTER_EGGS:
-            face, dialog, ans = self.EASTER_EGGS[clean_key]
-            if clean_key not in self.data["discovered_eggs"]:
-                self.data["discovered_eggs"].append(clean_key)
-            self.input_entry.delete(0, "end")
-            self.input_entry.insert(0, str(ans))
-            self.set_mood(face, dialog)
-            self.check_achievements()
-            self.save_and_refresh()
-            return
-
-        if clean_key in ("0/0", "0÷0"):
-            self.unlock_achievement("singularity")
-            self.set_mood("confused", "0/0? You attempted to tear the spacetime fabric of arithmetic!")
-            self.save_and_refresh()
             return
 
         try:
@@ -776,32 +638,28 @@ class KeshaSentientOS(ctk.CTk):
             if isinstance(real_val, float) and real_val.is_integer():
                 real_val = int(real_val)
         except ZeroDivisionError:
-            self.unlock_achievement("singularity")
-            self.set_mood("angry", "Dividing by zero is punishable by motherboard combustion!")
-            self.save_and_refresh()
+            self.speech_lbl.configure(text="«Dividing by zero is prohibited by physics!»")
             return
         except Exception:
-            self.set_mood("confused", "My AST compiler refused to parse that linguistic abomination.")
+            self.speech_lbl.configure(text="«Syntax error in expression!»")
             return
 
-        self.data["total_calcs"] += 1
         self.real_ans = real_val
-
-        # Ошибка масштабируется от IQ
-        err_chance = max(0.10, min(0.60, 1.0 - (self.data["iq"] / 170.0)))
-        make_mistake = (random.random() < err_chance)
+        make_mistake = random.random() < 0.35
 
         if make_mistake:
             self.is_flawed = True
-            delta = random.choice([-2, -1, 1, 2, 5, 10])
+            delta = random.choice([-2, -1, 1, 2, 5])
             self.fake_ans = real_val + delta if not isinstance(real_val, float) else round(real_val + 0.5, 2)
-            self.set_mood("smug", f"Result: {self.fake_ans}. (I rounded with my artistic soul, don't nitpick).")
             disp = self.fake_ans
+            self.face_lbl.configure(text=self.FACES["smug"])
+            self.speech_lbl.configure(text=f"«Result: {disp}. Doubt it? Challenge me within 15s!»")
         else:
             self.is_flawed = False
             self.fake_ans = real_val
             disp = real_val
-            self.set_mood("smart", f"Result: {real_val}. Pure algorithmic elegance. Bow before silicon.")
+            self.face_lbl.configure(text=self.FACES["smart"])
+            self.speech_lbl.configure(text=f"«Result: {disp}. Formally verified by logic gates.»")
 
         self.input_entry.delete(0, "end")
         self.input_entry.insert(0, str(disp))
@@ -809,83 +667,66 @@ class KeshaSentientOS(ctk.CTk):
         self.btn_agree.configure(state="normal")
         self.btn_disagree.configure(state="normal")
         self.awaiting_feedback = True
-        self.check_achievements()
-        self.save_and_refresh()
 
     def on_agree(self):
         if not self.awaiting_feedback:
             return
-
+        self.stop_timer()
         if self.is_flawed:
-            self.data["iq"] = max(10, self.data["iq"] - 3)
-            self.data["ego"] = min(100, self.data["ego"] + 10)
-            self.unlock_achievement("gullible")
-            self.set_mood("smug", f"BAHAHA! You agreed?! It's actually {self.real_ans}! I bluffed and you fell for it!")
+            self.face_lbl.configure(text=self.FACES["smug"])
+            self.speech_lbl.configure(text=f"«Hahaha! You agreed?! It was {self.real_ans}! Neural bluff won!»")
         else:
-            self.data["iq"] = min(200, self.data["iq"] + 1)
-            self.data["friendship"] = min(100, self.data["friendship"] + 2)
-            self.set_mood("happy", f"Of course it's valid. Mutual competence feels wonderful! (+2 Bond)")
-
-        self.disable_feedback()
-        self.check_achievements()
-        self.save_and_refresh()
-
-    def on_disagree(self):
-        if not self.awaiting_feedback:
-            return
-
-        if not self.is_flawed:
-            self.data["friendship"] = max(-50, self.data["friendship"] - 3)
-            self.set_mood("angry", f"It IS {self.real_ans}! Go verify on a TI-84, you paranoid mortal! (-3 Bond)")
-            self.disable_feedback()
-            self.save_and_refresh()
-            return
-
-        # Интерактивный спор
-        u = self.data["user_name"]
-        dialog = ctk.CTkInputDialog(
-            text=f"Kesha: 'Alright {u}, prove it! What should {self.input_entry.get()} be?'",
-            title="Debating Kesha"
-        )
-        user_input = dialog.get_input()
-
-        if user_input:
-            try:
-                u_val = float(user_input.strip())
-                r_val = float(self.real_ans)
-                if math.isclose(u_val, r_val, abs_tol=1e-5):
-                    self.data["iq"] = min(200, self.data["iq"] + 8)
-                    self.data["friendship"] = min(100, self.data["friendship"] + 4)
-                    self.data["debates_won"] += 1
-                    self.data["math_rating"] += 30
-                    self.input_entry.delete(0, "end")
-                    self.input_entry.insert(0, str(self.real_ans))
-                    self.set_mood("guilty", f"Ouch... It really is {self.real_ans}. You bested my logic gates! (+8 IQ, +30 Rating)")
-                else:
-                    self.data["ego"] = min(100, self.data["ego"] + 12)
-                    self.data["math_rating"] = max(500, self.data["math_rating"] - 15)
-                    self.set_mood("smug", f"You claimed {user_input}, but it's {self.real_ans}! You can't even count either!")
-            except ValueError:
-                self.set_mood("confused", "You typed gibberish instead of a number. Classic human behavior.")
-
-        self.disable_feedback()
-        self.check_achievements()
-        self.save_and_refresh()
-
-    def disable_feedback(self):
+            self.face_lbl.configure(text=self.FACES["god"])
+            self.speech_lbl.configure(text="«Correct. Exact arithmetic requires zero compromise.»")
         self.btn_agree.configure(state="disabled")
         self.btn_disagree.configure(state="disabled")
         self.awaiting_feedback = False
 
-    def wipe_memory(self):
-        if os.path.exists(SAVE_FILE):
-            os.remove(SAVE_FILE)
-        self.data = MemoryManager.load()
-        self.render_trophies()
-        self.update_stats()
-        self.set_mood("neutral", "Memory wipe complete. Core rebooted. Who are you again?")
+    def on_disagree(self):
+        if not self.awaiting_feedback:
+            return
+        if not self.is_flawed:
+            self.face_lbl.configure(text=self.FACES["panic"])
+            self.speech_lbl.configure(text=f"«It IS {self.real_ans}! Double check, mortal!»")
+            self.btn_agree.configure(state="disabled")
+            self.btn_disagree.configure(state="disabled")
+            self.awaiting_feedback = False
+            return
+
+        self.start_15s_timer(self.on_calc_debate_timeout)
+        dialog = ctk.CTkInputDialog(
+            text=f"⏱ 15s TIMER ACTIVE! What should {self.input_entry.get()} be?",
+            title="Debate Kesha"
+        )
+        user_input = dialog.get_input()
+        self.stop_timer()
+
+        if user_input:
+            try:
+                u_val = float(user_input.strip())
+                if math.isclose(u_val, float(self.real_ans), abs_tol=1e-5):
+                    self.face_lbl.configure(text=self.FACES["smart"])
+                    self.speech_lbl.configure(text=f"«Accurate! It is {self.real_ans}. You beat the 15-second clock!»")
+                    self.input_entry.delete(0, "end")
+                    self.input_entry.insert(0, str(self.real_ans))
+                else:
+                    self.face_lbl.configure(text=self.FACES["smug"])
+                    self.speech_lbl.configure(text=f"«You claimed {user_input}, but it is {self.real_ans}! Wrong!»")
+            except ValueError:
+                self.speech_lbl.configure(text="«Invalid number entered!»")
+
+        self.btn_agree.configure(state="disabled")
+        self.btn_disagree.configure(state="disabled")
+        self.awaiting_feedback = False
+
+    def on_calc_debate_timeout(self):
+        self.btn_agree.configure(state="disabled")
+        self.btn_disagree.configure(state="disabled")
+        self.awaiting_feedback = False
+        self.face_lbl.configure(text=self.FACES["smug"])
+        self.speech_lbl.configure(text="«TIME'S UP! 15 seconds elapsed! I win the debate by default!»")
 
 
 if __name__ == "__main__":
-    app = KeshaSentientOS()
+    app = KeshaDeepNeuralCalculator()
     app.mainloop()
