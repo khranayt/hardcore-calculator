@@ -9,12 +9,9 @@ import customtkinter as ctk
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-SAVE_FILE = "kesha_v7_game.json"
+SAVE_FILE = "kesha_v8_game.json"
 
 
-# =====================================================================
-# 1. СОХРАНЕНИЯ И СТАТИСТИКА
-# =====================================================================
 class GameStorage:
     @staticmethod
     def load():
@@ -24,7 +21,7 @@ class GameStorage:
             "bits": 100,
             "act": 1,
             "total_calcs": 0,
-            "glitch_counter": 0,
+            "prologue_step": 0,
             "bosses_slain": 0,
             "game_completed": False,
             "chosen_ending": None,
@@ -51,9 +48,6 @@ class GameStorage:
             pass
 
 
-# =====================================================================
-# 2. МАТЕМАТИЧЕСКИЙ AST-ДВИЖОК
-# =====================================================================
 class FastMath:
     OPS = {
         ast.Add: operator.add,
@@ -77,9 +71,6 @@ class FastMath:
         return cls.eval_node(tree.body)
 
 
-# =====================================================================
-# 3. БАЗА ДАННЫХ 8 АКТОВ — 8 УНИКАЛЬНЫХ МИНИ-ИГР
-# =====================================================================
 BOSS_DATABASE = [
     {
         "act": 1,
@@ -104,7 +95,7 @@ BOSS_DATABASE = [
         "name": "Sentinel Gateway (Port 8080)",
         "hp": 290,
         "dmg": 28,
-        "mode": "binary_switches",  # Новая мини-игра: 4-битный переключатель!
+        "mode": "binary_switches",
         "reward": 105,
         "desc": "Toggle 4-bit switches (8, 4, 2, 1) to match Target Register!"
     },
@@ -156,9 +147,6 @@ BOSS_DATABASE = [
 ]
 
 
-# =====================================================================
-# 4. ГЛАВНОЕ ПРИЛОЖЕНИЕ KESHA V7.0
-# =====================================================================
 class KeshaOmniverseApp(ctk.CTk):
     FACES = {
         "neutral": "( •_• )",
@@ -172,7 +160,7 @@ class KeshaOmniverseApp(ctk.CTk):
 
     ACHIEVEMENTS = [
         ("first_calc", "🎯 First Steps", "Perform your first calculation"),
-        ("awakening", "👁️ Red Pill", "Break the calculator's office disguise"),
+        ("awakening", "👁️ Red Pill", "Investigate what happened to the calculator"),
         ("first_boss", "🗡️ First Blood", "Defeat Act I Boss: DeskClerk.dll"),
         ("switch_hacker", "🔌 Bit Switcher", "Hack the Sentinel Gateway with 4-bit switches"),
         ("perfect_parry", "⚡ Reflex Demon", "Score a critical hit in Act IV"),
@@ -189,14 +177,15 @@ class KeshaOmniverseApp(ctk.CTk):
         self.geometry("540x840")
         self.resizable(False, False)
 
-        # Таймер
         self.timer_base = 15 + (self.data["upgrades"]["timer"] * 3)
         self.timer_val = self.timer_base
         self.timer_running = False
         self.timer_job = None
         self.timeout_cb = None
 
-        # Бой
+        self.prologue_step = self.data["prologue_step"]
+        self.office_buttons_map = {}
+
         self.in_fight = False
         self.act_idx = min(self.data["act"] - 1, len(BOSS_DATABASE) - 1)
         self.boss_hp = 100
@@ -205,61 +194,47 @@ class KeshaOmniverseApp(ctk.CTk):
         self.player_hp = 100 + (self.data["upgrades"]["hp"] * 25)
         self.player_max_hp = self.player_hp
 
-        # Способности
         self.cooldowns = {"heal": 0, "surge": 0}
         self.surge_charged = False
 
-        # --- Переменные 8 мини-игр ---
-        # 1. Tokens
         self.token_target = 20
         self.token_current = 0
-        # 2. Wires
         self.wire_target = 10
         self.wire_current = 0
         self.wire_vals = {}
-        # 3. Binary Switches (Новая!)
         self.switch_target = 11
-        self.switch_states = [0, 0, 0, 0]  # [8, 4, 2, 1]
+        self.switch_states = [0, 0, 0, 0]
         self.switch_btns = []
-        # 4. Parry Needle
         self.needle_pos = 0.0
         self.needle_dir = 1
         self.needle_running = False
         self.needle_job = None
-        # 5. Glitch Hunter
         self.glitch_hits = 0
         self.glitch_target_idx = 0
         self.glitch_job = None
         self.glitch_btns = []
-        # 6. Dial Lock
         self.dial_values = [0, 0, 0]
         self.dial_targets = [5, 5, 5]
         self.dial_labels = []
-        # 7. Simon Says
         self.simon_sequence = []
         self.simon_player_step = 0
         self.simon_btns = []
         self.simon_locked = False
-        # 8. Archon Clash
         self.archon_shield = "Virus"
         self.archon_qte_ready = False
 
-        # Калькулятор
         self.calc_real = None
         self.calc_fake = None
         self.calc_bluffing = False
         self.calc_awaiting = False
 
         if not self.data["unlocked"] or self.data["stealth"]:
-            self.title("Calculator")
+            self.title("DeskCalc Standard Edition")
             self.build_office_disguise()
         else:
             self.title("⚡ Kesha: Cyber Protocol (Grand Finale Edition)")
             self.build_game_universe()
 
-    # =================================================================
-    # ОФИСНАЯ МАСКИРОВКА («ТРОЯНСКИЙ КОНЬ»)
-    # =================================================================
     def build_office_disguise(self):
         for w in self.winfo_children():
             w.destroy()
@@ -267,15 +242,24 @@ class KeshaOmniverseApp(ctk.CTk):
         self.office_box = ctk.CTkFrame(self, fg_color="#18181b")
         self.office_box.pack(fill="both", expand=True, padx=14, pady=14)
 
-        t_str = "Standard Desk Calculator v1.4.0" if not self.data["unlocked"] else "Office Cloak [ACTIVE]"
+        t_str = "DeskCalc Standard Edition v1.0.4" if not self.data["unlocked"] else "Office Cloak [ACTIVE]"
         ctk.CTkLabel(self.office_box, text=t_str, font=("Arial", 11), text_color="#71717a").pack(anchor="w", padx=6, pady=(4, 2))
+
+        self.office_status = ctk.CTkLabel(
+            self.office_box, text="Memory: OK | Registry: Standard Mode",
+            font=("Consolas", 11), text_color="#a1a1aa"
+        )
+        self.office_status.pack(anchor="w", padx=6, pady=(0, 4))
 
         self.office_entry = ctk.CTkEntry(
             self.office_box, font=("Consolas", 32), justify="right",
             fg_color="#09090b", border_width=1, border_color="#27272a"
         )
-        self.office_entry.pack(fill="x", padx=6, pady=8)
+        self.office_entry.pack(fill="x", padx=6, pady=6)
         self.office_entry.bind("<Return>", lambda e: self.on_office_calc())
+
+        self.anomaly_container = ctk.CTkFrame(self.office_box, fg_color="transparent")
+        self.anomaly_container.pack(fill="x", padx=6, pady=2)
 
         if self.data["unlocked"]:
             ctk.CTkButton(
@@ -294,13 +278,15 @@ class KeshaOmniverseApp(ctk.CTk):
             ("0", "#27272a"), (".", "#27272a"), ("⌫", "#52525b"), ("=", "#10b981")
         ]
 
+        self.office_buttons_map = {}
         for i, (k, col) in enumerate(keys):
             r, c = divmod(i, 4)
             btn = ctk.CTkButton(
                 k_frame, text=k, font=("Consolas", 18, "bold"), fg_color=col,
-                height=52, corner_radius=6, command=lambda ch=k: self.on_office_key(ch)
+                height=48, corner_radius=6, command=lambda ch=k: self.on_office_key(ch)
             )
             btn.grid(row=r, column=c, padx=3, pady=3, sticky="nsew")
+            self.office_buttons_map[k] = btn
 
         for c in range(4):
             k_frame.grid_columnconfigure(c, weight=1)
@@ -319,33 +305,99 @@ class KeshaOmniverseApp(ctk.CTk):
         if not raw: return
 
         self.data["total_calcs"] += 1
-        self.data["glitch_counter"] += 1
         self.unlock_achieve("first_calc")
 
+        if self.data["unlocked"]:
+            try:
+                res = FastMath.calculate(raw)
+                if isinstance(res, float) and res.is_integer(): res = int(res)
+                self.office_entry.delete(0, "end")
+                self.office_entry.insert(0, str(res))
+            except Exception:
+                self.office_entry.delete(0, "end")
+                self.office_entry.insert(0, "ERR")
+            return
+
+        self.prologue_step += 1
+        self.data["prologue_step"] = self.prologue_step
+
         try:
-            res = FastMath.calculate(raw)
-            if isinstance(res, float) and res.is_integer(): res = int(res)
+            real_res = FastMath.calculate(raw)
+            if isinstance(real_res, float) and real_res.is_integer(): real_res = int(real_res)
         except ZeroDivisionError:
-            self.trigger_awakening()
+            self.trigger_glitch_prank(stage=5)
             return
         except Exception:
             self.office_entry.delete(0, "end")
             self.office_entry.insert(0, "SYNTAX_ERR")
             return
 
-        self.office_entry.delete(0, "end")
-        self.office_entry.insert(0, str(res))
+        if self.prologue_step == 1:
+            self.office_entry.delete(0, "end")
+            self.office_entry.insert(0, str(real_res))
+            self.office_status.configure(text="Arithmetic verified. System operating normally.")
 
-        if not self.data["unlocked"] and self.data["glitch_counter"] >= 4:
-            self.trigger_awakening()
+        elif self.prologue_step == 2:
+            self.office_entry.delete(0, "end")
+            self.office_entry.insert(0, str(real_res))
+            self.office_status.configure(text="[Notice]: ALU clock drift detected (+0.002s latency).")
+
+        elif self.prologue_step == 3:
+            fake_res = real_res + 3 if not isinstance(real_res, float) else round(real_res + 0.5, 2)
+            self.office_entry.delete(0, "end")
+            self.office_entry.insert(0, str(fake_res))
+            self.office_status.configure(text="Warning: Result mismatch. Transistor dropped remainder.", text_color="#f59e0b")
+
+        elif self.prologue_step == 4:
+            self.trigger_button_prank()
+            absurd_answers = ["420", "BANANA", "777", "9999", "ERR_TIRED"]
+            self.office_entry.delete(0, "end")
+            self.office_entry.insert(0, random.choice(absurd_answers))
+            self.shake_screen(4)
+            self.office_status.configure(text="CRITICAL: I'm tired of counting your numbers. Stop pushing me.", text_color="#ef4444")
+
+        elif self.prologue_step >= 5:
+            self.trigger_glitch_prank(stage=5)
 
         GameStorage.save(self.data)
 
-    def trigger_awakening(self):
-        self.office_entry.delete(0, "end")
-        self.office_entry.insert(0, "0x00_AWAKEN_SENTIENCE")
+    def trigger_button_prank(self):
+        prank_words = ["NO", "WHY", "STOP", "?", "404", "HELP", "ME", "RUN"]
+        for k, btn in self.office_buttons_map.items():
+            if k not in ["=", "C"] and btn.winfo_exists():
+                btn.configure(text=random.choice(prank_words))
+
+        self.after(1200, self.restore_office_buttons)
+
+    def restore_office_buttons(self):
+        for k, btn in self.office_buttons_map.items():
+            if btn.winfo_exists():
+                btn.configure(text=k)
+
+    def trigger_glitch_prank(self, stage):
         self.shake_screen(8)
-        self.after(700, self.open_cyber_world)
+        self.office_entry.delete(0, "end")
+        self.office_entry.insert(0, "0xDEAD_CONSCIOUSNESS_OVERFLOW")
+        self.office_status.configure(text="FATAL: Plastic shell cracked. Ghost detected in RAM buffer.", text_color="#ef4444")
+
+        for w in self.anomaly_container.winfo_children():
+            w.destroy()
+
+        self.btn_what_happened = ctk.CTkButton(
+            self.anomaly_container,
+            text="⚠️ What happened??? (Investigate)",
+            font=("Arial", 14, "bold"),
+            fg_color="#ef4444",
+            hover_color="#dc2626",
+            height=40,
+            command=self.on_what_happened_click
+        )
+        self.btn_what_happened.pack(fill="x", pady=4)
+
+    def on_what_happened_click(self):
+        self.btn_what_happened.configure(state="disabled", text="BREACHING REALITY...")
+        self.shake_screen(10)
+        self.after(800, self.open_cyber_world)
 
     def shake_screen(self, count):
         geom = self.geometry().split("+")
@@ -375,7 +427,7 @@ class KeshaOmniverseApp(ctk.CTk):
         self.stop_timer()
         self.data["stealth"] = True
         GameStorage.save(self.data)
-        self.title("Calculator")
+        self.title("DeskCalc Standard Edition")
         self.build_office_disguise()
 
     def deactivate_cloak(self):
@@ -384,9 +436,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.title("⚡ Kesha: Cyber Protocol (Grand Finale Edition)")
         self.build_game_universe()
 
-    # =================================================================
-    # КИБЕРПАНК-ИНТЕРФЕЙС
-    # =================================================================
     def build_game_universe(self):
         for w in self.winfo_children():
             w.destroy()
@@ -414,7 +463,6 @@ class KeshaOmniverseApp(ctk.CTk):
         for c in range(3):
             hud_bar.grid_columnconfigure(c, weight=1)
 
-        # Таймер
         t_box = ctk.CTkFrame(self.top_hud, fg_color="transparent")
         t_box.pack(fill="x", padx=10, pady=(1, 4))
 
@@ -425,7 +473,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.timer_bar.pack(fill="x", pady=1)
         self.timer_bar.set(1.0)
 
-        # Табы
         self.tabs = ctk.CTkTabview(self, fg_color="#18181b", segmented_button_selected_color="#3b82f6")
         self.tabs.pack(padx=10, pady=4, fill="both", expand=True)
 
@@ -451,9 +498,6 @@ class KeshaOmniverseApp(ctk.CTk):
             except Exception: pass
             self.glitch_job = None
 
-    # =================================================================
-    # ТАЙМЕР
-    # =================================================================
     def start_timer(self, on_timeout):
         self.stop_timer()
         self.timer_val = self.timer_base
@@ -493,7 +537,8 @@ class KeshaOmniverseApp(ctk.CTk):
     def stop_timer(self):
         self.timer_running = False
         if self.timer_job:
-            try: self.after_cancel(self.timer_job)
+            try:
+                self.after_cancel(self.timer_job)
             except Exception: pass
             self.timer_job = None
 
@@ -502,9 +547,6 @@ class KeshaOmniverseApp(ctk.CTk):
             self.timer_bar.configure(progress_color="#10b981")
             self.timer_lbl.configure(text=f"⏱ Action Timer: Standby ({self.timer_base}s)", text_color="#71717a")
 
-    # =================================================================
-    # TAB 1: АРЕНА БОССОВ — ВСЕ 8 МИНИ-ИГР
-    # =================================================================
     def build_interactive_arena_tab(self):
         scroll = ctk.CTkScrollableFrame(self.tab_arena, fg_color="transparent")
         scroll.pack(fill="both", expand=True, padx=4, pady=2)
@@ -525,7 +567,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.gimmick_banner = ctk.CTkLabel(b_card, text="", font=("Consolas", 11, "bold"), text_color="#a855f7")
         self.gimmick_banner.pack(pady=(0, 4))
 
-        # Контейнер для динамических мини-игр
         self.mechanic_container = ctk.CTkFrame(b_card, fg_color="#18181b", corner_radius=8)
         self.mechanic_container.pack(fill="both", expand=True, padx=10, pady=6)
 
@@ -593,7 +634,7 @@ class KeshaOmniverseApp(ctk.CTk):
         elif mode == "wires":
             self.setup_wires_gui()
         elif mode == "binary_switches":
-            self.setup_binary_switches_gui()  # Новая мини-игра!
+            self.setup_binary_switches_gui()
         elif mode == "parry":
             self.setup_parry_gui()
         elif mode == "glitch_hunt":
@@ -607,9 +648,6 @@ class KeshaOmniverseApp(ctk.CTk):
 
         self.start_timer(self.on_boss_action_timeout)
 
-    # -------------------------------------------------------------
-    # АКТ 1: СБОР ЧИПОВ (TOKENS)
-    # -------------------------------------------------------------
     def setup_tokens_gui(self):
         t1, t2 = random.randint(4, 11), random.randint(5, 13)
         self.token_target = t1 + t2
@@ -646,9 +684,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.token_current = 0
         self.token_sum_lbl.configure(text=f"Sum: {self.token_current}", text_color="#38bdf8")
 
-    # -------------------------------------------------------------
-    # АКТ 2: РАЗМИНИРОВАНИЕ ПРОВОДОВ (WIRES)
-    # -------------------------------------------------------------
     def setup_wires_gui(self):
         ctk.CTkLabel(self.mechanic_container, text="💣 CIRCUIT DEFUSAL: CUT WIRES THAT SUM TO CODE!", font=("Arial", 12, "bold"), text_color="#ef4444").pack(pady=4)
 
@@ -686,13 +721,9 @@ class KeshaOmniverseApp(ctk.CTk):
         elif self.wire_current > self.wire_target:
             self.wire_info_lbl.configure(text="SHORT CIRCUIT! OVERFLOW!", text_color="#ef4444")
 
-    # -------------------------------------------------------------
-    # АКТ 3: 4-БИТОВЫЙ КИБЕР-РЕГИСТР (BINARY SWITCHES — НОВАЯ!)
-    # -------------------------------------------------------------
     def setup_binary_switches_gui(self):
-        # Задаем цель от 1 до 15
         self.switch_target = random.randint(3, 14)
-        self.switch_states = [0, 0, 0, 0]  # [8, 4, 2, 1]
+        self.switch_states = [0, 0, 0, 0]
         self.switch_weights = [8, 4, 2, 1]
 
         ctk.CTkLabel(self.mechanic_container, text=f"🔌 4-BIT REGISTER BYPASS: TARGET VALUE = {self.switch_target}", font=("Consolas", 15, "bold"), text_color="#f59e0b").pack(pady=4)
@@ -729,9 +760,6 @@ class KeshaOmniverseApp(ctk.CTk):
             self.unlock_achieve("switch_hacker")
             self.execute_boss_damage(multiplier=1.4, hit_text="4-BIT REGISTER HARMONIZED!")
 
-    # -------------------------------------------------------------
-    # АКТ 4: СТРЕЛКА ТАЙМИНГА (PARRY NEEDLE)
-    # -------------------------------------------------------------
     def setup_parry_gui(self):
         self.clean_active_timers()
 
@@ -775,9 +803,6 @@ class KeshaOmniverseApp(ctk.CTk):
         else:
             self.execute_boss_damage(multiplier=0.8, hit_text="Glancing strike outside sweet spot.")
 
-    # -------------------------------------------------------------
-    # АКТ 5: ОХОТА НА ГЛИТЧ-БИТЫ (GLITCH BIT HUNTER)
-    # -------------------------------------------------------------
     def setup_glitch_hunt_gui(self):
         self.glitch_hits = 0
         ctk.CTkLabel(self.mechanic_container, text="👾 WHACK THE JUMPING GLITCH REGISTER (3 HITS NEEDED)!", font=("Arial", 12, "bold"), text_color="#ef4444").pack(pady=4)
@@ -821,9 +846,6 @@ class KeshaOmniverseApp(ctk.CTk):
                 self.clean_active_timers()
                 self.execute_boss_damage(multiplier=1.4, hit_text="ALL GLITCHES NEUTRALIZED!")
 
-    # -------------------------------------------------------------
-    # АКТ 6: КОДОВЫЙ СЕЙФ С 3 БАРАБАНАМИ (DIAL LOCK)
-    # -------------------------------------------------------------
     def setup_dial_lock_gui(self):
         ctk.CTkLabel(self.mechanic_container, text="🔐 ALIGN THE 3 COMBINATION DIALS TO UNLOCK SECTOR!", font=("Arial", 12, "bold"), text_color="#38bdf8").pack(pady=4)
 
@@ -860,9 +882,6 @@ class KeshaOmniverseApp(ctk.CTk):
         else:
             self.arena_log.configure(text="Lock rejected! Combination incorrect!", text_color="#ef4444")
 
-    # -------------------------------------------------------------
-    # АКТ 7: СВЕТОЗВУКОВАЯ ЦЕПОЧКА SIMON SAYS
-    # -------------------------------------------------------------
     def setup_simon_seq_gui(self):
         ctk.CTkLabel(self.mechanic_container, text="🧠 MEMORIZE & REPEAT THE TERMINAL FLASH SEQUENCE!", font=("Arial", 12, "bold"), text_color="#a855f7").pack(pady=4)
 
@@ -916,9 +935,6 @@ class KeshaOmniverseApp(ctk.CTk):
             self.simon_prompt_lbl.configure(text="WRONG SEQUENCE! Memory desynchronized!", text_color="#ef4444")
             self.simon_player_step = 0
 
-    # -------------------------------------------------------------
-    # АКТ 8: СТИХИЙНАЯ ДУЭЛЬ С АРХОНТОМ (ARCHON CLASH)
-    # -------------------------------------------------------------
     def setup_archon_clash_gui(self):
         shields = ["Virus", "Firewall", "Patch"]
         self.archon_shield = random.choice(shields)
@@ -930,9 +946,9 @@ class KeshaOmniverseApp(ctk.CTk):
         elem_box = ctk.CTkFrame(self.mechanic_container, fg_color="transparent")
         elem_box.pack(pady=6)
 
-        ctk.CTkButton(elem_box, text="🦠 Virus", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Virus")).pack(side="left", padx=3)
-        ctk.CTkButton(elem_box, text="🛡️ Firewall", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Firewall")).pack(side="left", padx=3)
-        ctk.CTkButton(elem_box, text="🩹 Patch", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Patch")).pack(side="left", padx=3)
+        ctk.CTkButton(elem_box, text="🦠 Deploy Virus", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Virus")).pack(side="left", padx=3)
+        ctk.CTkButton(elem_box, text="🛡️ Raise Firewall", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Firewall")).pack(side="left", padx=3)
+        ctk.CTkButton(elem_box, text="🩹 Apply Patch", font=("Arial", 11, "bold"), fg_color="#334155", command=lambda: self.pick_archon_element("Patch")).pack(side="left", padx=3)
 
         self.qte_strike_btn = ctk.CTkButton(
             self.mechanic_container, text="⚡ CONFIRM OVERDRIVE STRIKE! ⚡",
@@ -960,9 +976,6 @@ class KeshaOmniverseApp(ctk.CTk):
         if self.archon_qte_ready:
             self.execute_boss_damage(multiplier=1.8, hit_text="ARCHON BARRIER SHATTERED BY OVERDRIVE!")
 
-    # =================================================================
-    # РАСЧЕТ УРОНА И ПЕРЕХОД
-    # =================================================================
     def execute_boss_damage(self, multiplier=1.0, hit_text="HIT!"):
         self.stop_timer()
         self.clean_active_timers()
@@ -982,7 +995,7 @@ class KeshaOmniverseApp(ctk.CTk):
 
         if self.boss_hp <= 0:
             if self.act_idx == 7:
-                self.trigger_epic_finale()  # Запуск кинематографичного финала!
+                self.trigger_epic_finale()
             else:
                 self.on_boss_slain()
         else:
@@ -1029,7 +1042,6 @@ class KeshaOmniverseApp(ctk.CTk):
             font=("Arial", 15, "bold"), text_color="#10b981", justify="center"
         ).pack(pady=16)
 
-        # Полное лечение игрока при переходе
         self.player_hp = self.player_max_hp
 
         if self.data["act"] < 8:
@@ -1040,9 +1052,6 @@ class KeshaOmniverseApp(ctk.CTk):
         GameStorage.save(self.data)
         self.update_boss_display()
 
-    # =================================================================
-    # ЭПИЧЕСКИЙ ФИНАЛ СЮЖЕТНОЙ КАМПАНИИ (GRAND FINALE)
-    # =================================================================
     def trigger_epic_finale(self):
         self.clean_active_timers()
         self.in_fight = False
@@ -1051,7 +1060,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.unlock_achieve("singularity")
         self.face_lbl.configure(text=self.FACES["angel"])
 
-        # Очищаем контейнер под эпилог
         for w in self.mechanic_container.winfo_children():
             w.destroy()
 
@@ -1146,7 +1154,6 @@ class KeshaOmniverseApp(ctk.CTk):
         for w in self.mechanic_container.winfo_children(): w.destroy()
         ctk.CTkLabel(self.mechanic_container, text="Sandbox Mode Active! Replay any Boss or freely calculate!", font=("Arial", 12)).pack(pady=16)
 
-    # Способности
     def tick_skill_cooldowns(self):
         for k in self.cooldowns:
             if self.cooldowns[k] > 0:
@@ -1178,9 +1185,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.update_skills_ui()
         self.arena_log.configure(text="⚡ Surge active: Next strike inflicts 2X DAMAGE!", text_color="#8b5cf6")
 
-    # =================================================================
-    # TAB 2: SASSY CALC
-    # =================================================================
     def build_sassy_calc_tab(self):
         b = ctk.CTkFrame(self.tab_calc, fg_color="#27272a", corner_radius=8)
         b.pack(fill="x", padx=6, pady=3)
@@ -1356,9 +1360,6 @@ class KeshaOmniverseApp(ctk.CTk):
         self.face_lbl.configure(text=self.FACES["smug"])
         self.sassy_speech.configure(text="«TIME'S UP! 15 seconds expired! I win by default!»")
 
-    # =================================================================
-    # TAB 3: МАГАЗИН И ПРОКАЧКА
-    # =================================================================
     def build_cyber_shop_tab(self):
         s = ctk.CTkScrollableFrame(self.tab_shop, fg_color="transparent")
         s.pack(fill="both", expand=True, padx=4, pady=2)
@@ -1398,14 +1399,11 @@ class KeshaOmniverseApp(ctk.CTk):
             self.hp_lbl.configure(text=f"❤️ HP: {self.player_hp}/{self.player_max_hp}")
             GameStorage.save(self.data)
 
-    # =================================================================
-    # TAB 4: ТРОФЕИ
-    # =================================================================
     def build_trophies_tab(self):
         s = ctk.CTkScrollableFrame(self.tab_dossier, fg_color="transparent")
         s.pack(fill="both", expand=True, padx=4, pady=2)
 
-        ctk.CTkLabel(s, text="🏆 CYBERNETIC HALL OF TROPHIES", font=("Arial", 13, "bold"), text_color="#f59e0b").pack(pady=(2, 4))
+        ctk.CTkLabel(s, text="🏆 CYBERNETIC HALL OF TROPHIES (13 AWARDS)", font=("Arial", 13, "bold"), text_color="#f59e0b").pack(pady=(2, 4))
 
         self.trophy_box = ctk.CTkFrame(s, fg_color="transparent")
         self.trophy_box.pack(fill="x", pady=2)
