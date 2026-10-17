@@ -1,4 +1,4 @@
-# 🧮 DeskCalc Standard Edition (v1.0.4)
+# 🧮 DeskCalc Standard Edition (v3.0.0)
 
 A lightweight, distraction-free desktop calculator crafted with Python and CustomTkinter. 
 
